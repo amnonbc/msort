@@ -65,10 +65,7 @@ func writeInts(a []int) (string, error) {
 	defer f.Close()
 	h := bufio.NewWriter(f)
 	for _, x := range a {
-		err := writeInt(h, x)
-		if err != nil {
-			return "", err
-		}
+		writeInt(h, x)
 	}
 	return f.Name(), h.Flush()
 }
