@@ -55,12 +55,14 @@ func writeInts(a []int) (string, error) {
 		return "", err
 	}
 	defer f.Close()
+	h := bufio.NewWriter(f)
 	for _, x := range a {
-		err := writeInt(f, x)
+		err := writeInt(h, x)
 		if err != nil {
 			return "", err
 		}
 	}
+	h.Flush()
 	return f.Name(), nil
 }
 
@@ -152,6 +154,8 @@ func merge(fn1 string, fn2 string) (string, error) {
 		return "", err
 	}
 	defer fm.Close()
-	err = doMerge(fm, f1, f2)
+	h := bufio.NewWriter(fm)
+	err = doMerge(h, f1, f2)
+	h.Flush()
 	return fm.Name(), err
 }

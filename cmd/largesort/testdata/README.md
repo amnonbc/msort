@@ -1,1 +1,0 @@
-This empty directory gets populated, and then cleaned when ../test.sh is run.
