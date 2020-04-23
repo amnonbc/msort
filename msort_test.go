@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"strings"
 	"testing"
@@ -153,6 +155,30 @@ func Test_sortFilezz(t *testing.T) {
 	err := SortFile(outFile, strings.NewReader(s), 4)
 	assert.NoError(t, err)
 	checkContent(t, "0 1 2 3 4 5 6 7 8 9 10", outFile)
+}
+
+type randReader int
+
+func (r *randReader) Read(buf []byte) (int, error) {
+	if int(*r) == 0 {
+		return 0, io.EOF
+	}
+	w := &bytes.Buffer{}
+	for len(buf)-w.Len() > 20 && int(*r) > 0 {
+		fmt.Fprintln(w, rand.Int31())
+		*r--
+	}
+
+	copy(buf, w.Bytes())
+	return w.Len(), nil
+}
+
+func Test_sortFileMassive(t *testing.T) {
+	r := randReader(1000000)
+	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
+	defer os.Remove(outFile)
+	err := SortFile(outFile, &r, 10000)
+	assert.NoError(t, err)
 }
 
 func Test_sortFile(t *testing.T) {
