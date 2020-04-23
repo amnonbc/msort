@@ -179,3 +179,17 @@ func Test_sortFile(t *testing.T) {
 		})
 	}
 }
+
+func Test_sortFileMalformedInput(t *testing.T) {
+	fn, err := ioutil.TempFile("", "softtest")
+	defer os.Remove(fn.Name())
+	err = SortFile(fn.Name(), strings.NewReader("not_a_number"), 4)
+	assert.Error(t, err)
+}
+
+func Test_sortFileReadError(t *testing.T) {
+	fn, err := ioutil.TempFile("", "softtest")
+	defer os.Remove(fn.Name())
+	err = SortFile(fn.Name(), errorReader(0), 4)
+	assert.Error(t, err)
+}
