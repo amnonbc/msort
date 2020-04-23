@@ -1,5 +1,6 @@
-
-./genrand.awk -v numlines=10000000 > testdata/input.txt
+NUM=10000000
+echo generating $NUM random numbers
+./genrand.awk -v numlines=$NUM > testdata/input.txt
 
 go build .
 
@@ -11,6 +12,6 @@ cd testdata
 echo running unix sort
 time sort -n input.txt -o wanted.txt
 
+echo comparing our output with unix sort
 diff wanted.txt output.txt && echo SUCCESS
-
-#rm -f wanted.txt output.txt input.txt
+rm -f wanted.txt output.txt input.txt

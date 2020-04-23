@@ -49,6 +49,7 @@ func writeInt(w io.Writer, x int) error {
 	return err
 }
 
+// writeInts writes a slice of numbers into a new temprary file, returning the name of the temporary file
 func writeInts(a []int) (string, error) {
 	f, err := ioutil.TempFile("", "sortchunk")
 	if err != nil {
@@ -66,6 +67,8 @@ func writeInts(a []int) (string, error) {
 	return f.Name(), nil
 }
 
+// leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
+// It returns a slice of the names of chunkfiles.
 func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
 	buf := make([]int, chunkSz)
 	a := newAStream(r)
@@ -86,6 +89,7 @@ func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
 	return chunks, a.err
 }
 
+// SortFile sorts numbers from r, saving the output to outFileName.
 func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 	files, err := leafSort(r, chunkSz)
 	if err != nil {
@@ -104,6 +108,7 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 	return err
 }
 
+// doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
 func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
 	a := newAStream(r1)
 	b := newAStream(r2)
@@ -134,6 +139,8 @@ func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
 	return b.err
 }
 
+// merge merges fn1 and fn2, and writes the merged output into a new temporary file.
+// it returns the name of the new temporary file.
 func merge(fn1 string, fn2 string) (string, error) {
 	f1, err := os.Open(fn1)
 	if err != nil {
