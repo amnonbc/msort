@@ -1,6 +1,7 @@
 package msort
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -49,12 +50,42 @@ func Test_astream_ReadNums(t *testing.T) {
 
 }
 
+func Test_astream_ReadNumsError(t *testing.T) {
+	a := newAStream(strings.NewReader("abc"))
+	nums := make([]int, 2)
+	_, err := a.ReadNums(nums)
+	assert.Error(t, err)
+}
+
 func Test_doMerge(t *testing.T) {
 	out := &bytes.Buffer{}
 	r1 := strings.NewReader("1 3 5")
 	r2 := strings.NewReader("2 4")
 	doMerge(out, r1, r2)
 	assert.Equal(t, "1\n2\n3\n4\n5\n", out.String())
+}
+
+type errorWriter int
+
+func (_ errorWriter) Write(_ []byte) (int, error) {
+	return 0, fmt.Errorf("File system full")
+}
+
+func Test_doMergeErrorOutput(t *testing.T) {
+	var out errorWriter
+	h := bufio.NewWriter(out)
+	r1 := strings.NewReader("1 3 5")
+	r2 := strings.NewReader("2 4")
+	doMerge(h, r1, r2)
+	err := h.Flush()
+	assert.Error(t, err)
+}
+
+func Test_doMergeErrorInput(t *testing.T) {
+	r1 := strings.NewReader("1 not a number")
+	r2 := strings.NewReader("2 4")
+	err := doMerge(ioutil.Discard, r1, r2)
+	assert.Error(t, err)
 }
 
 func checkContent(t *testing.T, expected string, fn string) {

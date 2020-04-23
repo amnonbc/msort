@@ -25,7 +25,14 @@ func newAStream(r io.Reader) aStream {
 	return i
 }
 
+func (a *aStream) ok() bool {
+	return a.err == nil && a.eof == false
+}
+
 func (a *aStream) Next() bool {
+	if a.err != nil {
+		return false
+	}
 	a.eof = !a.r.Scan()
 	a.err = a.r.Err()
 	if a.eof || a.err != nil {
@@ -63,8 +70,7 @@ func writeInts(a []int) (string, error) {
 			return "", err
 		}
 	}
-	h.Flush()
-	return f.Name(), nil
+	return f.Name(), h.Flush()
 }
 
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
@@ -109,12 +115,14 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 }
 
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
+// We ignore write errors here. `w` will actually be a bufio.Writer, and this will store any write errors
+// internally, and these should be checked by the caller.
 func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
 	a := newAStream(r1)
 	b := newAStream(r2)
 	a.Next()
 	b.Next()
-	for !a.eof && !b.eof {
+	for a.ok() && b.ok() {
 		if a.top < b.top {
 			writeInt(w, a.top)
 			a.Next()
@@ -123,19 +131,18 @@ func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
 			b.Next()
 		}
 	}
-
-	if a.err != nil {
-		return a.err
-	}
-	for !a.eof {
+	for a.ok() {
 		writeInt(w, a.top)
 		a.Next()
 	}
-	for !b.eof {
+	for b.ok() {
 		writeInt(w, b.top)
 		b.Next()
 	}
 
+	if a.err != nil {
+		return a.err
+	}
 	return b.err
 }
 
@@ -163,6 +170,5 @@ func merge(fn1 string, fn2 string) (string, error) {
 	defer fm.Close()
 	h := bufio.NewWriter(fm)
 	err = doMerge(h, f1, f2)
-	h.Flush()
-	return fm.Name(), err
+	return fm.Name(), h.Flush()
 }
