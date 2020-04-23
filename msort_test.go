@@ -35,6 +35,14 @@ func Test_astream_Next(t *testing.T) {
 
 }
 
+func Test_astream_NextError(t *testing.T) {
+	a := newAStream(errorReader(0))
+	ok := a.Next()
+	assert.False(t, ok)
+	assert.False(t, a.ok())
+	assert.Error(t, a.err)
+}
+
 func Test_astream_ReadNums(t *testing.T) {
 	a := newAStream(strings.NewReader("1\n2\n3\n"))
 	nums := make([]int, 2)
@@ -57,6 +65,13 @@ func Test_astream_ReadNumsError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func Test_astream_ReadNumsErrorBadFile(t *testing.T) {
+	a := newAStream(errorReader(0))
+	nums := make([]int, 2)
+	_, err := a.ReadNums(nums)
+	assert.Error(t, err)
+}
+
 func Test_doMerge(t *testing.T) {
 	out := &bytes.Buffer{}
 	r1 := strings.NewReader("1 3 5")
@@ -65,10 +80,21 @@ func Test_doMerge(t *testing.T) {
 	assert.Equal(t, "1\n2\n3\n4\n5\n", out.String())
 }
 
+func Test_doMergeBadInputFile(t *testing.T) {
+	err := doMerge(ioutil.Discard, errorReader(0), errorReader(0))
+	assert.Error(t, err)
+}
+
 type errorWriter int
 
 func (_ errorWriter) Write(_ []byte) (int, error) {
 	return 0, fmt.Errorf("File system full")
+}
+
+type errorReader int
+
+func (_ errorReader) Read(_ []byte) (int, error) {
+	return 0, fmt.Errorf("Can not read")
 }
 
 func Test_doMergeErrorOutput(t *testing.T) {
@@ -108,6 +134,16 @@ func Test_leafSort(t *testing.T) {
 	checkContent(t, "4 6 8 10", gotChunks[0])
 	checkContent(t, "0 1 2 3", gotChunks[1])
 	checkContent(t, "5 7 9", gotChunks[2])
+}
+
+func Test_leafSortError(t *testing.T) {
+	var err error
+	tmpDir, err = ioutil.TempDir(".", "tempdir")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+	s := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
+	_, err = leafSort(strings.NewReader(s), 4)
+	assert.Error(t, err)
 }
 
 func Test_sortFilezz(t *testing.T) {
