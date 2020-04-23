@@ -1,5 +1,7 @@
 # largesort
 
+![Go](https://github.com/amnonbc/msort/workflows/Go/badge.svg)
+
 ## Building
 
 `go build ./...`
