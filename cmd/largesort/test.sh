@@ -1,5 +1,6 @@
 NUM=10000000
 echo generating $NUM random numbers
+test -d testdata || mkdir testdata
 ./genrand.awk -v numlines=$NUM > testdata/input.txt
 
 go build .
