@@ -1,7 +1,6 @@
 package msort
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -101,11 +100,9 @@ func (_ errorReader) Read(_ []byte) (int, error) {
 
 func Test_doMergeErrorOutput(t *testing.T) {
 	var out errorWriter
-	h := bufio.NewWriter(out)
 	r1 := strings.NewReader("1 3 5")
 	r2 := strings.NewReader("2 4")
-	doMerge(h, r1, r2)
-	err := h.Flush()
+	err := doMerge(out, r1, r2)
 	assert.Error(t, err)
 }
 

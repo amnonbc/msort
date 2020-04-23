@@ -112,9 +112,8 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 }
 
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
-// We ignore write errors here. `w` will actually be a bufio.Writer, and this will store any write errors
-// internally, and these should be checked by the caller.
-func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
+func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
+	w := bufio.NewWriter(writer)
 	a := newAStream(r1)
 	b := newAStream(r2)
 	a.Next()
@@ -140,7 +139,11 @@ func doMerge(w io.Writer, r1 io.Reader, r2 io.Reader) error {
 	if a.err != nil {
 		return a.err
 	}
-	return b.err
+	if b.err != nil {
+		return b.err
+	}
+
+	return w.Flush()
 }
 
 // merge merges fn1 and fn2, and writes the merged output into a new temporary file.
@@ -165,7 +168,6 @@ func merge(fn1 string, fn2 string) (string, error) {
 		return "", err
 	}
 	defer fm.Close()
-	h := bufio.NewWriter(fm)
-	err = doMerge(h, f1, f2)
-	return fm.Name(), h.Flush()
+	err = doMerge(fm, f1, f2)
+	return fm.Name(), err
 }
