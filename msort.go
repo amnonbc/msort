@@ -3,6 +3,7 @@ package msort
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -72,12 +73,22 @@ func (a *iStream) Next() bool {
 	if a.err != nil {
 		return false
 	}
-	a.top, a.err = binary.ReadVarint(&a.r)
-	if a.err == io.EOF {
+	buf := make([]byte, 8)
+	n, err := a.r.Read(buf)
+	if err == io.EOF {
 		a.eof = true
 		a.err = nil
 		return false
 	}
+	if err != nil {
+		a.err = err
+		return false
+	}
+	if n != 8 {
+		a.err = errors.New("Input truncated")
+		return false
+	}
+	a.top = int64(binary.LittleEndian.Uint64(buf))
 	return a.err == nil
 }
 
@@ -89,7 +100,6 @@ func (a *aStream) ReadNums(nums []int) (int, error) {
 	}
 	return n, a.err
 }
-
 
 func writeInt(w io.Writer, x int) error {
 	_, err := fmt.Fprintln(w, x)
@@ -112,8 +122,8 @@ func writeInts(a []int) (string, error) {
 
 func writeBInt(h io.Writer, x int64) {
 	buf := make([]byte, 8)
-	n := binary.PutVarint(buf, x)
-	h.Write(buf[:n])
+	binary.LittleEndian.PutUint64(buf, uint64(x))
+	h.Write(buf)
 }
 
 // writeInts writes a slice of numbers into a new temprary file, returning the name of the temporary file
@@ -129,7 +139,6 @@ func writeBInts(a []int) (string, error) {
 	}
 	return f.Name(), h.Flush()
 }
-
 
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.

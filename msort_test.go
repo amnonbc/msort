@@ -73,7 +73,7 @@ func Test_astream_ReadNumsErrorBadFile(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func encode(val... int64)[]byte {
+func encode(val ...int64) []byte {
 	a := &bytes.Buffer{}
 	for _, x := range val {
 		writeBInt(a, x)
@@ -86,7 +86,7 @@ func Test_doMerge(t *testing.T) {
 	r1 := bytes.NewReader(encode(1, 3, 5))
 	r2 := bytes.NewReader(encode(2, 4))
 	doMerge(out, r1, r2)
-	assert.Equal(t, encode(1,2,3,4,5), out.Bytes())
+	assert.Equal(t, encode(1, 2, 3, 4, 5), out.Bytes())
 }
 
 func Test_doMergeOneToOne(t *testing.T) {
@@ -94,9 +94,8 @@ func Test_doMergeOneToOne(t *testing.T) {
 	r1 := bytes.NewReader(encode(1))
 	r2 := bytes.NewReader(encode(2))
 	doMerge(out, r1, r2)
-	assert.Equal(t, encode(1,2), out.Bytes())
+	assert.Equal(t, encode(1, 2), out.Bytes())
 }
-
 
 func Test_doMergeBadInputFile(t *testing.T) {
 	err := doMerge(ioutil.Discard, errorReader(0), errorReader(0))
@@ -153,9 +152,9 @@ func Test_leafSort(t *testing.T) {
 	gotChunks, err := leafSort(strings.NewReader(s), 4)
 	assert.NoError(t, err)
 	require.Equal(t, 3, len(gotChunks))
-	checkContent(t, encode(4,6,8,10), gotChunks[0])
-	checkContent(t, encode(0,1,2,3), gotChunks[1])
-	checkContent(t, encode(7,9, 99), gotChunks[2])
+	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
+	checkContent(t, encode(0, 1, 2, 3), gotChunks[1])
+	checkContent(t, encode(7, 9, 99), gotChunks[2])
 }
 
 func Test_leafSort0(t *testing.T) {
@@ -167,7 +166,7 @@ func Test_leafSort0(t *testing.T) {
 	gotChunks, err := leafSort(strings.NewReader(s), 4)
 	assert.NoError(t, err)
 	require.Equal(t, 2, len(gotChunks))
-	checkContent(t, encode(4,6,8,10), gotChunks[0])
+	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
 	checkContent(t, encode(2), gotChunks[1])
 }
 
@@ -180,7 +179,7 @@ func Test_leafSort1(t *testing.T) {
 	gotChunks, err := leafSort(strings.NewReader(s), 4)
 	assert.NoError(t, err)
 	require.Equal(t, 2, len(gotChunks))
-	checkContent(t, encode(4,6,8,10), gotChunks[0])
+	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
 }
 func Test_leafSort2(t *testing.T) {
 	var err error
@@ -291,11 +290,11 @@ func Test_iStream_NextEmpty(t *testing.T) {
 func Test_writeBInt(t *testing.T) {
 	h := &bytes.Buffer{}
 	writeBInt(h, 0x7)
-	assert.Equal(t, []byte{0xe}, h.Bytes())
+	assert.Equal(t, []byte{0x7, 0, 0, 0, 0, 0, 0, 0}, h.Bytes())
 }
 
 func Test_ReadBInt(t *testing.T) {
-	h := bytes.NewReader([]byte{0xe})
+	h := bytes.NewReader([]byte{0x7, 0, 0, 0, 0, 0, 0, 0})
 	b := newIStream(h)
 	ok := b.Next()
 	assert.True(t, ok)
@@ -303,4 +302,3 @@ func Test_ReadBInt(t *testing.T) {
 	assert.NoError(t, b.err)
 	assert.Equal(t, int64(7), b.top)
 }
-
