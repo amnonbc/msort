@@ -3,7 +3,6 @@ package msort
 import (
 	"bufio"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,6 +17,8 @@ type aStream struct {
 	eof bool
 	err error
 }
+
+const bytesPerNumber = 8
 
 type iStream struct {
 	top int64
@@ -73,8 +74,11 @@ func (a *iStream) Next() bool {
 	if a.err != nil {
 		return false
 	}
-	buf := make([]byte, 8)
-	n, err := a.r.Read(buf)
+	buf, err := a.r.Peek(bytesPerNumber)
+	if len(buf) > 0 && len(buf) != bytesPerNumber {
+		a.err = fmt.Errorf("Input stream truncated, got %d bytes, need %d", len(buf), bytesPerNumber)
+		return false
+	}
 	if err == io.EOF {
 		a.eof = true
 		a.err = nil
@@ -84,12 +88,9 @@ func (a *iStream) Next() bool {
 		a.err = err
 		return false
 	}
-	if n != 8 {
-		a.err = errors.New("Input truncated")
-		return false
-	}
+	a.r.Discard(bytesPerNumber)
 	a.top = int64(binary.LittleEndian.Uint64(buf))
-	return a.err == nil
+	return true
 }
 
 func (a *aStream) ReadNums(nums []int) (int, error) {
@@ -121,7 +122,7 @@ func writeInts(a []int) (string, error) {
 }
 
 func writeBInt(h io.Writer, x int64) {
-	buf := make([]byte, 8)
+	buf := make([]byte, bytesPerNumber)
 	binary.LittleEndian.PutUint64(buf, uint64(x))
 	h.Write(buf)
 }

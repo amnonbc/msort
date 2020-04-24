@@ -116,15 +116,22 @@ func (_ errorReader) Read(_ []byte) (int, error) {
 
 func Test_doMergeErrorOutput(t *testing.T) {
 	var out errorWriter
-	r1 := strings.NewReader("1 3 5")
-	r2 := strings.NewReader("2 4")
+	r1 := bytes.NewReader(encode(1))
+	r2 := bytes.NewReader(encode(2))
 	err := doMerge(out, r1, r2)
 	assert.Error(t, err)
 }
 
 func Test_doMergeErrorInput(t *testing.T) {
 	r1 := errorReader(0)
-	r2 := strings.NewReader("2 4")
+	r2 := bytes.NewReader(encode(1, 2, 3))
+	err := doMerge(ioutil.Discard, r1, r2)
+	assert.Error(t, err)
+}
+
+func Test_doMergeTruncatedInput(t *testing.T) {
+	r1 := bytes.NewReader([]byte{1, 2, 3, 4, 5, 6})
+	r2 := bytes.NewReader(encode(1, 2, 3))
 	err := doMerge(ioutil.Discard, r1, r2)
 	assert.Error(t, err)
 }
