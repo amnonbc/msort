@@ -2,6 +2,7 @@ package msort
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,18 @@ type aStream struct {
 	r   *bufio.Scanner
 	eof bool
 	err error
+}
+
+type iStream struct {
+	top int64
+	r   bufio.Reader
+	eof bool
+	err error
+}
+
+func newIStream(r io.Reader) iStream {
+	return iStream{r: *bufio.NewReader(r)}
+	return iStream{r: *bufio.NewReader(r)}
 }
 
 var tmpDir = os.TempDir()
@@ -42,6 +55,32 @@ func (a *aStream) Next() bool {
 	return true
 }
 
+func (a *iStream) ReadNums(nums []int) (int, error) {
+	n := 0
+	for n < len(nums) && a.Next() {
+		nums[n] = int(a.top)
+		n++
+	}
+	return n, a.err
+}
+
+func (a *iStream) ok() bool {
+	return a.err == nil && a.eof == false
+}
+
+func (a *iStream) Next() bool {
+	if a.err != nil {
+		return false
+	}
+	a.top, a.err = binary.ReadVarint(&a.r)
+	if a.err == io.EOF {
+		a.eof = true
+		a.err = nil
+		return false
+	}
+	return a.err == nil
+}
+
 func (a *aStream) ReadNums(nums []int) (int, error) {
 	n := 0
 	for n < len(nums) && a.Next() {
@@ -50,6 +89,7 @@ func (a *aStream) ReadNums(nums []int) (int, error) {
 	}
 	return n, a.err
 }
+
 
 func writeInt(w io.Writer, x int) error {
 	_, err := fmt.Fprintln(w, x)
@@ -70,6 +110,27 @@ func writeInts(a []int) (string, error) {
 	return f.Name(), h.Flush()
 }
 
+func writeBInt(h io.Writer, x int64) {
+	buf := make([]byte, 8)
+	n := binary.PutVarint(buf, x)
+	h.Write(buf[:n])
+}
+
+// writeInts writes a slice of numbers into a new temprary file, returning the name of the temporary file
+func writeBInts(a []int) (string, error) {
+	f, err := ioutil.TempFile("", "sortchunk")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := bufio.NewWriter(f)
+	for _, x := range a {
+		writeBInt(h, int64(x))
+	}
+	return f.Name(), h.Flush()
+}
+
+
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.
 func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
@@ -83,13 +144,32 @@ func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
 		}
 		buf = buf[0:n]
 		sort.Ints(buf)
-		fn, err := writeInts(buf)
+		fn, err := writeBInts(buf)
 		if err != nil {
 			return chunks, err
 		}
 		chunks = append(chunks, fn)
 	}
 	return chunks, a.err
+}
+
+func binToAscii(in string, out string) error {
+	h, err := os.Open(in)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	a := newIStream(h)
+	o, err := os.Create(out)
+	if err != nil {
+		return err
+	}
+	defer o.Close()
+	ob := bufio.NewWriter(o)
+	for a.Next() {
+		writeInt(ob, int(a.top))
+	}
+	return ob.Flush()
 }
 
 // SortFile sorts numbers from r, saving the output to outFileName.
@@ -106,7 +186,7 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 		files = append(files[2:], newFile)
 	}
 	if len(files) == 1 {
-		err = os.Rename(files[0], outFileName)
+		err = binToAscii(files[0], outFileName)
 	}
 	return err
 }
@@ -114,25 +194,25 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
 func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
 	w := bufio.NewWriter(writer)
-	a := newAStream(r1)
-	b := newAStream(r2)
+	a := newIStream(r1)
+	b := newIStream(r2)
 	a.Next()
 	b.Next()
 	for a.ok() && b.ok() {
 		if a.top < b.top {
-			writeInt(w, a.top)
+			writeBInt(w, a.top)
 			a.Next()
 		} else {
-			writeInt(w, b.top)
+			writeBInt(w, b.top)
 			b.Next()
 		}
 	}
 	for a.ok() {
-		writeInt(w, a.top)
+		writeBInt(w, a.top)
 		a.Next()
 	}
 	for b.ok() {
-		writeInt(w, b.top)
+		writeBInt(w, b.top)
 		b.Next()
 	}
 
