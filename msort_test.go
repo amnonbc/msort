@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -150,18 +149,27 @@ func checkContent(t *testing.T, expected interface{}, fn string) {
 	}
 }
 
+//leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int64)
 func Test_leafSort(t *testing.T) {
 	var err error
 	tmpDir, err = ioutil.TempDir(".", "tempdir")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 	s := "10 8 6 4 2 0 1 3 7 9 99"
-	gotChunks, err := leafSort(strings.NewReader(s), 4)
-	assert.NoError(t, err)
-	require.Equal(t, 3, len(gotChunks))
-	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
-	checkContent(t, encode(0, 1, 2, 3), gotChunks[1])
-	checkContent(t, encode(7, 9, 99), gotChunks[2])
+	files := make(chan string)
+	errors := make(chan error)
+	inFlight := int64(1)
+	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
+
+	chunk := <-files
+	checkContent(t, encode(4, 6, 8, 10), chunk)
+
+	chunk = <-files
+	checkContent(t, encode(0, 1, 2, 3), chunk)
+
+	chunk = <-files
+	checkContent(t, encode(7, 9, 99), chunk)
+	assert.Zero(t, inFlight)
 }
 
 func Test_leafSort0(t *testing.T) {
@@ -170,38 +178,17 @@ func Test_leafSort0(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 	s := "10 8 6 4 2"
-	gotChunks, err := leafSort(strings.NewReader(s), 4)
-	assert.NoError(t, err)
-	require.Equal(t, 2, len(gotChunks))
-	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
-	checkContent(t, encode(2), gotChunks[1])
-}
+	files := make(chan string)
+	errors := make(chan error)
+	inFlight := int64(1)
+	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
 
-func Test_leafSort1(t *testing.T) {
-	var err error
-	tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
-	s := "10 8 6 4"
-	gotChunks, err := leafSort(strings.NewReader(s), 4)
-	assert.NoError(t, err)
-	require.Equal(t, 2, len(gotChunks))
-	checkContent(t, encode(4, 6, 8, 10), gotChunks[0])
-}
-func Test_leafSort2(t *testing.T) {
-	var err error
-	tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
-	s := "10 8 99 4 2 0 1 3 5"
-	gotChunks, err := leafSort(strings.NewReader(s), 1)
-	assert.NoError(t, err)
-	require.Equal(t, 10, len(gotChunks))
-	checkContent(t, encode(10), gotChunks[0])
-	checkContent(t, encode(8), gotChunks[1])
-	checkContent(t, encode(99), gotChunks[2])
-	checkContent(t, encode(4), gotChunks[3])
-	checkContent(t, encode(2), gotChunks[4])
+	chunk := <-files
+	checkContent(t, encode(4, 6, 8, 10), chunk)
+
+	chunk = <-files
+	checkContent(t, encode(2), chunk)
+	assert.Zero(t, inFlight)
 }
 
 func Test_leafSortError(t *testing.T) {
@@ -210,7 +197,11 @@ func Test_leafSortError(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 	s := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
-	_, err = leafSort(strings.NewReader(s), 4)
+	files := make(chan string, 10)
+	errors := make(chan error)
+	inFlight := int64(1)
+	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
+	err = <-errors
 	assert.Error(t, err)
 }
 

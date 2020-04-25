@@ -9,7 +9,11 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"sync"
+	"sync/atomic"
 )
+
+var done sync.Mutex
 
 type aStream struct {
 	top int
@@ -143,24 +147,29 @@ func writeBInts(a []int) (string, error) {
 
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.
-func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
+func leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int64) {
 	buf := make([]int, chunkSz)
 	a := newAStream(r)
 
 	for !a.eof && a.err == nil {
 		n, err := a.ReadNums(buf)
 		if err != nil {
-			return chunks, err
+			errors <- err
+			return
 		}
 		buf = buf[0:n]
 		sort.Ints(buf)
 		fn, err := writeBInts(buf)
 		if err != nil {
-			return chunks, err
+			errors <- err
+			return
 		}
-		chunks = append(chunks, fn)
+		chunks <- fn
 	}
-	return chunks, a.err
+	done.Lock()
+	atomic.AddInt64(inFlight, -1)
+	done.Unlock()
+
 }
 
 func binToAscii(in string, out string) error {
@@ -184,21 +193,34 @@ func binToAscii(in string, out string) error {
 
 // SortFile sorts numbers from r, saving the output to outFileName.
 func SortFile(outFileName string, r io.Reader, chunkSz int) error {
-	files, err := leafSort(r, chunkSz)
-	if err != nil {
-		return err
-	}
-	for len(files) > 1 {
-		newFile, err := merge(files[0], files[1])
-		if err != nil {
+	left, right := "", ""
+	files := make(chan string, 1000)
+	errors := make(chan error, 1000)
+	inFlight := int64(1)
+	go leafSort(r, chunkSz, files, errors, &inFlight)
+	for {
+		select {
+		case left = <-files:
+		case err := <-errors:
 			return err
 		}
-		files = append(files[2:], newFile)
+
+		done.Lock()
+		inF := atomic.LoadInt64(&inFlight)
+		done.Unlock()
+		if inF == 0 && len(files) == 0 {
+			break
+		}
+		select {
+		case right = <-files:
+
+		case err := <-errors:
+			return err
+		}
+		atomic.AddInt64(&inFlight, 1)
+		go merge(left, right, files, errors, &inFlight)
 	}
-	if len(files) == 1 {
-		err = binToAscii(files[0], outFileName)
-	}
-	return err
+	return binToAscii(left, outFileName)
 }
 
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
@@ -238,26 +260,37 @@ func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
 
 // merge merges fn1 and fn2, and writes the merged output into a new temporary file.
 // it returns the name of the new temporary file.
-func merge(fn1 string, fn2 string) (string, error) {
+func merge(fn1 string, fn2 string, files chan string, errors chan error, inFlight *int64) {
 	f1, err := os.Open(fn1)
 	if err != nil {
-		return "", err
+		errors <- err
+		return
 	}
 	os.Remove(fn1)
 	defer f1.Close()
 
 	f2, err := os.Open(fn2)
 	if err != nil {
-		return "", err
+		errors <- err
+		return
 	}
 	os.Remove(fn2)
 	defer f1.Close()
 
 	fm, err := ioutil.TempFile("", "sortchunk")
 	if err != nil {
-		return "", err
+		errors <- err
+		return
+
 	}
 	defer fm.Close()
 	err = doMerge(fm, f1, f2)
-	return fm.Name(), err
+	if err != nil {
+		errors <- err
+		return
+	}
+	done.Lock()
+	atomic.AddInt64(inFlight, -1)
+	files <- fm.Name()
+	done.Unlock()
 }
