@@ -155,21 +155,19 @@ func Test_leafSort(t *testing.T) {
 	tmpDir, err = ioutil.TempDir(".", "tempdir")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
-	s := "10 8 6 4 2 0 1 3 7 9 99"
-	files := make(chan string)
-	errors := make(chan error)
-	inFlight := int32(1)
-	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
+	input := "10 8 6 4 2 0 1 3 7 9 99"
+	s := newSorter()
+	go s.leafSort(strings.NewReader(input), 4)
 
-	chunk := <-files
+	chunk := <-s.fileChan
 	checkContent(t, encode(4, 6, 8, 10), chunk)
 
-	chunk = <-files
+	chunk = <-s.fileChan
 	checkContent(t, encode(0, 1, 2, 3), chunk)
 
-	chunk = <-files
+	chunk = <-s.fileChan
 	checkContent(t, encode(7, 9, 99), chunk)
-	assert.Zero(t, inFlight)
+	assert.Zero(t, s.inFlight)
 }
 
 func Test_leafSort0(t *testing.T) {
@@ -177,18 +175,16 @@ func Test_leafSort0(t *testing.T) {
 	tmpDir, err = ioutil.TempDir(".", "tempdir")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
-	s := "10 8 6 4 2"
-	files := make(chan string)
-	errors := make(chan error)
-	inFlight := int32(1)
-	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
+	input := "10 8 6 4 2"
+	s := newSorter()
+	go s.leafSort(strings.NewReader(input), 4)
 
-	chunk := <-files
+	chunk := <-s.fileChan
 	checkContent(t, encode(4, 6, 8, 10), chunk)
 
-	chunk = <-files
+	chunk = <-s.fileChan
 	checkContent(t, encode(2), chunk)
-	assert.Zero(t, inFlight)
+	assert.Zero(t, s.inFlight)
 }
 
 func Test_leafSortError(t *testing.T) {
@@ -196,12 +192,10 @@ func Test_leafSortError(t *testing.T) {
 	tmpDir, err = ioutil.TempDir(".", "tempdir")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
-	s := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
-	files := make(chan string, 10)
-	errors := make(chan error)
-	inFlight := int32(1)
-	go leafSort(strings.NewReader(s), 4, files, errors, &inFlight)
-	err = <-errors
+	input := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
+	s := newSorter()
+	go s.leafSort(strings.NewReader(input), 4)
+	err = <-s.errors
 	assert.Error(t, err)
 }
 
