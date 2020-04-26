@@ -20,13 +20,13 @@ func Test_astream_Next(t *testing.T) {
 	assert.True(t, ok)
 	assert.False(t, a.eof)
 	assert.NoError(t, a.err)
-	assert.Equal(t, 1, a.top)
+	assert.Equal(t, int64(1), a.top)
 
 	ok = a.Next()
 	assert.True(t, ok)
 	assert.False(t, a.eof)
 	assert.NoError(t, a.err)
-	assert.Equal(t, 2, a.top)
+	assert.Equal(t, int64(2), a.top)
 
 	ok = a.Next()
 	assert.False(t, ok)
@@ -45,29 +45,29 @@ func Test_astream_NextError(t *testing.T) {
 
 func Test_astream_ReadNums(t *testing.T) {
 	a := newAStream(strings.NewReader("1\n2\n3\n"))
-	nums := make([]int, 2)
+	nums := make([]int64, 2)
 	n, err := a.ReadNums(nums)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, n)
-	assert.Equal(t, []int{1, 2}, nums)
+	assert.Equal(t, []int64{1, 2}, nums)
 
 	n, err = a.ReadNums(nums)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, n)
-	assert.Equal(t, 3, nums[0])
+	assert.Equal(t, int64(3), nums[0])
 
 }
 
 func Test_astream_ReadNumsError(t *testing.T) {
 	a := newAStream(strings.NewReader("abc"))
-	nums := make([]int, 2)
+	nums := make([]int64, 2)
 	_, err := a.ReadNums(nums)
 	assert.Error(t, err)
 }
 
 func Test_astream_ReadNumsErrorBadFile(t *testing.T) {
 	a := newAStream(errorReader(0))
-	nums := make([]int, 2)
+	nums := make([]int64, 2)
 	_, err := a.ReadNums(nums)
 	assert.Error(t, err)
 }
@@ -299,4 +299,61 @@ func Test_ReadBInt(t *testing.T) {
 	assert.False(t, b.eof)
 	assert.NoError(t, b.err)
 	assert.Equal(t, int64(7), b.top)
+}
+
+func Test_writeBInts(t *testing.T) {
+	f := &bytes.Buffer{}
+	err := writeBInts(f, []int64{1})
+	assert.NoError(t, err)
+	assert.Equal(t, encode(1), f.Bytes())
+}
+
+func Test_intWriter_Write(t *testing.T) {
+	f := &bytes.Buffer{}
+	w := newIntWriter(f, 2)
+	w.Write(1)
+	w.Flush()
+	assert.Equal(t, encode(1), f.Bytes())
+}
+
+func Test_intWriter_Write3(t *testing.T) {
+	f := &bytes.Buffer{}
+	w := newIntWriter(f, 2)
+	w.Write(1)
+	w.Write(2)
+	w.Write(3)
+	w.Flush()
+	assert.Equal(t, encode(1, 2, 3), f.Bytes())
+}
+
+func Test_readBInts(t *testing.T) {
+	buf := bytes.NewBuffer(encode(1, 2, 3))
+	a := make([]int64, 3)
+	got, err := readBInts(buf, a)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, got)
+	assert.Equal(t, []int64{1, 2, 3}, a)
+}
+
+func Test_readBIntsShort(t *testing.T) {
+	buf := bytes.NewBuffer(encode(1, 2, 3))
+	a := make([]int64, 2)
+	got, err := readBInts(buf, a)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, got)
+	assert.Equal(t, []int64{1, 2}, a)
+}
+
+func Test_readBIntsEof(t *testing.T) {
+	buf := bytes.NewBuffer(encode(1, 2, 3))
+	a := make([]int64, 4)
+	got, err := readBInts(buf, a)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, got)
+	assert.Equal(t, []int64{1, 2, 3}, a[0:got])
+
+	got, err = readBInts(buf, a)
+	assert.Error(t, err)
+	assert.Equal(t, 0, got)
+
 }
