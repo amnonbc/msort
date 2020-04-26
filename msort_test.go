@@ -46,12 +46,12 @@ func Test_astream_NextError(t *testing.T) {
 func Test_astream_ReadNums(t *testing.T) {
 	a := newAStream(strings.NewReader("1\n2\n3\n"))
 	nums := make([]int32, 2)
-	n, err := a.ReadNums(nums)
+	n, err := a.readNums(nums)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, n)
 	assert.Equal(t, []int32{1, 2}, nums)
 
-	n, err = a.ReadNums(nums)
+	n, err = a.readNums(nums)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, n)
 	assert.Equal(t, int32(3), nums[0])
@@ -61,14 +61,14 @@ func Test_astream_ReadNums(t *testing.T) {
 func Test_astream_ReadNumsError(t *testing.T) {
 	a := newAStream(strings.NewReader("abc"))
 	nums := make([]int32, 2)
-	_, err := a.ReadNums(nums)
+	_, err := a.readNums(nums)
 	assert.Error(t, err)
 }
 
 func Test_astream_ReadNumsErrorBadFile(t *testing.T) {
 	a := newAStream(errorReader(0))
 	nums := make([]int32, 2)
-	_, err := a.ReadNums(nums)
+	_, err := a.readNums(nums)
 	assert.Error(t, err)
 }
 
@@ -311,7 +311,7 @@ func Test_writeBInts(t *testing.T) {
 func Test_intWriter_Write(t *testing.T) {
 	f := &bytes.Buffer{}
 	w := newIntWriter(f, 2)
-	w.Write(1)
+	w.writeInt32(1)
 	w.Flush()
 	assert.Equal(t, encode(1), f.Bytes())
 }
@@ -319,9 +319,9 @@ func Test_intWriter_Write(t *testing.T) {
 func Test_intWriter_Write3(t *testing.T) {
 	f := &bytes.Buffer{}
 	w := newIntWriter(f, 2)
-	w.Write(1)
-	w.Write(2)
-	w.Write(3)
+	w.writeInt32(1)
+	w.writeInt32(2)
+	w.writeInt32(3)
 	w.Flush()
 	assert.Equal(t, encode(1, 2, 3), f.Bytes())
 }
