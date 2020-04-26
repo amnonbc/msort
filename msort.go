@@ -3,20 +3,23 @@ package msort
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 var done sync.Mutex
 
 type aStream struct {
-	top int
+	top int64
 	r   *bufio.Scanner
 	eof bool
 	err error
@@ -25,15 +28,20 @@ type aStream struct {
 const bytesPerNumber = 8
 
 type iStream struct {
-	top int64
-	r   bufio.Reader
-	eof bool
-	err error
+	top  int64
+	buf  []int64
+	next int
+	last int
+	r    io.Reader
+	eof  bool
+	err  error
 }
 
 func newIStream(r io.Reader) iStream {
-	return iStream{r: *bufio.NewReader(r)}
-	return iStream{r: *bufio.NewReader(r)}
+	return iStream{
+		r:   r,
+		buf: make([]int64, 16*1024),
+	}
 }
 
 var tmpDir = os.TempDir()
@@ -57,17 +65,10 @@ func (a *aStream) Next() bool {
 	if a.eof || a.err != nil {
 		return false
 	}
-	a.top, a.err = strconv.Atoi(a.r.Text())
+	x := 0
+	x, a.err = strconv.Atoi(a.r.Text())
+	a.top = int64(x)
 	return true
-}
-
-func (a *iStream) ReadNums(nums []int) (int, error) {
-	n := 0
-	for n < len(nums) && a.Next() {
-		nums[n] = int(a.top)
-		n++
-	}
-	return n, a.err
 }
 
 func (a *iStream) ok() bool {
@@ -78,26 +79,25 @@ func (a *iStream) Next() bool {
 	if a.err != nil {
 		return false
 	}
-	buf, err := a.r.Peek(bytesPerNumber)
-	if len(buf) > 0 && len(buf) != bytesPerNumber {
-		a.err = fmt.Errorf("Input stream truncated, got %d bytes, need %d", len(buf), bytesPerNumber)
+	if a.next >= a.last {
+		n, err := readBInts(a.r, a.buf)
+		if err == io.EOF {
+			a.eof = true
+		} else {
+			a.err = err
+		}
+		a.last = n
+		a.next = 0
+	}
+	if a.err != nil || a.eof {
 		return false
 	}
-	if err == io.EOF {
-		a.eof = true
-		a.err = nil
-		return false
-	}
-	if err != nil {
-		a.err = err
-		return false
-	}
-	a.r.Discard(bytesPerNumber)
-	a.top = int64(binary.LittleEndian.Uint64(buf))
+	a.top = a.buf[a.next]
+	a.next++
 	return true
 }
 
-func (a *aStream) ReadNums(nums []int) (int, error) {
+func (a *aStream) ReadNums(nums []int64) (int, error) {
 	n := 0
 	for n < len(nums) && a.Next() {
 		nums[n] = a.top
@@ -132,23 +132,51 @@ func writeBInt(h io.Writer, x int64) {
 }
 
 // writeInts writes a slice of numbers into a new temprary file, returning the name of the temporary file
-func writeBInts(a []int) (string, error) {
+func writeBIntsToFile(a []int64) (string, error) {
 	f, err := ioutil.TempFile("", "sortchunk")
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	h := bufio.NewWriter(f)
-	for _, x := range a {
-		writeBInt(h, int64(x))
+	err = writeBInts(f, a)
+	return f.Name(), err
+}
+
+func writeBInts(f io.Writer, a []int64) error {
+
+	// Get the slice header
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
+	header.Len *= bytesPerNumber
+	header.Cap *= bytesPerNumber
+
+	// Convert slice header to an []byte
+	data := *(*[]byte)(unsafe.Pointer(&header))
+
+	_, err := f.Write(data)
+	return err
+}
+
+func readBInts(f io.Reader, a []int64) (int, error) {
+
+	// Get the slice header
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
+	header.Len *= bytesPerNumber
+	header.Cap *= bytesPerNumber
+
+	// Convert slice header to an []byte
+	data := *(*[]byte)(unsafe.Pointer(&header))
+
+	n, err := f.Read(data)
+	if n%bytesPerNumber != 0 {
+		err = errors.New("truncated input")
 	}
-	return f.Name(), h.Flush()
+	return n / bytesPerNumber, err
 }
 
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.
 func leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int64) {
-	buf := make([]int, chunkSz)
+	buf := make([]int64, chunkSz)
 	a := newAStream(r)
 
 	for !a.eof && a.err == nil {
@@ -158,8 +186,10 @@ func leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, i
 			return
 		}
 		buf = buf[0:n]
-		sort.Ints(buf)
-		fn, err := writeBInts(buf)
+		sort.Slice(buf, func(i, j int) bool {
+			return buf[i] < buf[j]
+		})
+		fn, err := writeBIntsToFile(buf)
 		if err != nil {
 			errors <- err
 			return
@@ -223,28 +253,56 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 	return binToAscii(left, outFileName)
 }
 
+type intWriter struct {
+	f      io.Writer
+	maxLen int
+	buf    []int64
+	err    error
+}
+
+func newIntWriter(f io.Writer, maxLen int) *intWriter {
+	return &intWriter{
+		f:      f,
+		maxLen: maxLen,
+		buf:    make([]int64, 0, maxLen),
+	}
+}
+
+func (w *intWriter) Flush() error {
+	w.err = writeBInts(w.f, w.buf)
+	w.buf = w.buf[0:0]
+	return w.err
+}
+
+func (w *intWriter) Write(x int64) {
+	if len(w.buf) >= w.maxLen {
+		w.Flush()
+	}
+	w.buf = append(w.buf, x)
+}
+
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
 func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
-	w := bufio.NewWriter(writer)
+	w := newIntWriter(writer, 16*1024)
 	a := newIStream(r1)
 	b := newIStream(r2)
 	a.Next()
 	b.Next()
 	for a.ok() && b.ok() {
 		if a.top < b.top {
-			writeBInt(w, a.top)
+			w.Write(a.top)
 			a.Next()
 		} else {
-			writeBInt(w, b.top)
+			w.Write(b.top)
 			b.Next()
 		}
 	}
 	for a.ok() {
-		writeBInt(w, a.top)
+		w.Write(a.top)
 		a.Next()
 	}
 	for b.ok() {
-		writeBInt(w, b.top)
+		w.Write(b.top)
 		b.Next()
 	}
 
