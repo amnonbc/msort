@@ -18,10 +18,33 @@ cd cmd/largesort
 ```
 
 ## Improvements
-- intermediate files are currently text. Reading and writing will be much 
-faster if we use binary files
-- Only two files are merged at a time. We could speed this up by
-using `runtime.NumCPU()` goroutines to merge simultaneously.
-- The first parse spilts the input file into small sorted chunks. At the
-moment we wait until this has completed before we start the merge phase.
-But we can start merging as soon as there are two chunks available.
+- using 32 bit binary for intermediate files
+- using unsafe casts to read and write files directly into []int64 without going through 
+binary.LittleEndian
+- run merges in parralel
+- initially we waited for the initial leafSort pass to complete before starting merging the chunks.
+We now start merging as soon as the first two chunks have been written.
+- use int32 rather than int64, halving the amnount of disk io.
+
+This speeds up sort time by a factor of 3.
+
+### Before the changes
+```
+generating 10000000 random numbers
+running largesort
+real	0m17.807s
+user	0m14.183s
+sys	0m2.845s
+```
+
+### After the changes
+```
+generating 10000000 random numbers
+running largesort
+real	0m6.548s
+user	0m5.716s
+sys	0m1.191s
+```
+
+## TODO
+We should probably limit the number of active goroutines to the number of cores on the machine.

@@ -2,19 +2,46 @@ package msort
 
 import (
 	"bufio"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"unsafe"
 )
 
+var done sync.Mutex
+
 type aStream struct {
-	top int
+	top int32
 	r   *bufio.Scanner
 	eof bool
 	err error
+}
+
+const bytesPerNumber = 4
+
+type iStream struct {
+	top  int32
+	buf  []int32
+	next int
+	last int
+	r    io.Reader
+	eof  bool
+	err  error
+}
+
+func newIStream(r io.Reader) iStream {
+	return iStream{
+		r:   r,
+		buf: make([]int32, 16*1024),
+	}
 }
 
 var tmpDir = os.TempDir()
@@ -38,11 +65,39 @@ func (a *aStream) Next() bool {
 	if a.eof || a.err != nil {
 		return false
 	}
-	a.top, a.err = strconv.Atoi(a.r.Text())
+	x := 0
+	x, a.err = strconv.Atoi(a.r.Text())
+	a.top = int32(x)
 	return true
 }
 
-func (a *aStream) ReadNums(nums []int) (int, error) {
+func (a *iStream) ok() bool {
+	return a.err == nil && a.eof == false
+}
+
+func (a *iStream) Next() bool {
+	if a.err != nil {
+		return false
+	}
+	if a.next >= a.last {
+		n, err := readBInts(a.r, a.buf)
+		if err == io.EOF {
+			a.eof = true
+		} else {
+			a.err = err
+		}
+		a.last = n
+		a.next = 0
+	}
+	if a.err != nil || a.eof {
+		return false
+	}
+	a.top = a.buf[a.next]
+	a.next++
+	return true
+}
+
+func (a *aStream) ReadNums(nums []int32) (int, error) {
 	n := 0
 	for n < len(nums) && a.Next() {
 		nums[n] = a.top
@@ -70,69 +125,184 @@ func writeInts(a []int) (string, error) {
 	return f.Name(), h.Flush()
 }
 
+func writeBInt(h io.Writer, x int32) {
+	buf := make([]byte, bytesPerNumber)
+	binary.LittleEndian.PutUint32(buf, uint32(x))
+	h.Write(buf)
+}
+
+// writeInts writes a slice of numbers into a new temprary file, returning the name of the temporary file
+func writeBIntsToFile(a []int32) (string, error) {
+	f, err := ioutil.TempFile("", "sortchunk")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	err = writeBInts(f, a)
+	return f.Name(), err
+}
+
+func writeBInts(f io.Writer, a []int32) error {
+
+	// Get the slice header
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
+	header.Len *= bytesPerNumber
+	header.Cap *= bytesPerNumber
+
+	// Convert slice header to an []byte
+	data := *(*[]byte)(unsafe.Pointer(&header))
+
+	_, err := f.Write(data)
+	return err
+}
+
+func readBInts(f io.Reader, a []int32) (int, error) {
+
+	// Get the slice header
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
+	header.Len *= bytesPerNumber
+	header.Cap *= bytesPerNumber
+
+	// Convert slice header to an []byte
+	data := *(*[]byte)(unsafe.Pointer(&header))
+
+	n, err := f.Read(data)
+	if n%bytesPerNumber != 0 {
+		err = errors.New("truncated input")
+	}
+	return n / bytesPerNumber, err
+}
+
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.
-func leafSort(r io.Reader, chunkSz int) (chunks []string, err error) {
-	buf := make([]int, chunkSz)
+func leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int32) {
+	buf := make([]int32, chunkSz)
 	a := newAStream(r)
 
 	for !a.eof && a.err == nil {
 		n, err := a.ReadNums(buf)
 		if err != nil {
-			return chunks, err
+			errors <- err
+			return
 		}
 		buf = buf[0:n]
-		sort.Ints(buf)
-		fn, err := writeInts(buf)
+		sort.Slice(buf, func(i, j int) bool {
+			return buf[i] < buf[j]
+		})
+		fn, err := writeBIntsToFile(buf)
 		if err != nil {
-			return chunks, err
+			errors <- err
+			return
 		}
-		chunks = append(chunks, fn)
+		chunks <- fn
 	}
-	return chunks, a.err
+	done.Lock()
+	atomic.AddInt32(inFlight, -1)
+	done.Unlock()
+
+}
+
+func binToAscii(in string, out string) error {
+	h, err := os.Open(in)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	a := newIStream(h)
+	o, err := os.Create(out)
+	if err != nil {
+		return err
+	}
+	defer o.Close()
+	ob := bufio.NewWriter(o)
+	for a.Next() {
+		writeInt(ob, int(a.top))
+	}
+	return ob.Flush()
 }
 
 // SortFile sorts numbers from r, saving the output to outFileName.
 func SortFile(outFileName string, r io.Reader, chunkSz int) error {
-	files, err := leafSort(r, chunkSz)
-	if err != nil {
-		return err
-	}
-	for len(files) > 1 {
-		newFile, err := merge(files[0], files[1])
-		if err != nil {
+	left, right := "", ""
+	files := make(chan string, 1000)
+	errors := make(chan error, 1000)
+	inFlight := int32(1)
+	go leafSort(r, chunkSz, files, errors, &inFlight)
+	for {
+		select {
+		case left = <-files:
+		case err := <-errors:
 			return err
 		}
-		files = append(files[2:], newFile)
+
+		done.Lock()
+		inF := atomic.LoadInt32(&inFlight)
+		done.Unlock()
+		if inF == 0 && len(files) == 0 {
+			break
+		}
+		select {
+		case right = <-files:
+
+		case err := <-errors:
+			return err
+		}
+		atomic.AddInt32(&inFlight, 1)
+		go merge(left, right, files, errors, &inFlight)
 	}
-	if len(files) == 1 {
-		err = os.Rename(files[0], outFileName)
+	return binToAscii(left, outFileName)
+}
+
+type intWriter struct {
+	f      io.Writer
+	maxLen int
+	buf    []int32
+	err    error
+}
+
+func newIntWriter(f io.Writer, maxLen int) *intWriter {
+	return &intWriter{
+		f:      f,
+		maxLen: maxLen,
+		buf:    make([]int32, 0, maxLen),
 	}
-	return err
+}
+
+func (w *intWriter) Flush() error {
+	w.err = writeBInts(w.f, w.buf)
+	w.buf = w.buf[0:0]
+	return w.err
+}
+
+func (w *intWriter) Write(x int32) {
+	if len(w.buf) >= w.maxLen {
+		w.Flush()
+	}
+	w.buf = append(w.buf, x)
 }
 
 // doMerge merges two sorted sequences of numbers from r1 and r2, and writes the merged output to w.
 func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
-	w := bufio.NewWriter(writer)
-	a := newAStream(r1)
-	b := newAStream(r2)
+	w := newIntWriter(writer, 16*1024)
+	a := newIStream(r1)
+	b := newIStream(r2)
 	a.Next()
 	b.Next()
 	for a.ok() && b.ok() {
 		if a.top < b.top {
-			writeInt(w, a.top)
+			w.Write(a.top)
 			a.Next()
 		} else {
-			writeInt(w, b.top)
+			w.Write(b.top)
 			b.Next()
 		}
 	}
 	for a.ok() {
-		writeInt(w, a.top)
+		w.Write(a.top)
 		a.Next()
 	}
 	for b.ok() {
-		writeInt(w, b.top)
+		w.Write(b.top)
 		b.Next()
 	}
 
@@ -148,26 +318,37 @@ func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
 
 // merge merges fn1 and fn2, and writes the merged output into a new temporary file.
 // it returns the name of the new temporary file.
-func merge(fn1 string, fn2 string) (string, error) {
+func merge(fn1 string, fn2 string, files chan string, errors chan error, inFlight *int32) {
 	f1, err := os.Open(fn1)
 	if err != nil {
-		return "", err
+		errors <- err
+		return
 	}
 	os.Remove(fn1)
 	defer f1.Close()
 
 	f2, err := os.Open(fn2)
 	if err != nil {
-		return "", err
+		errors <- err
+		return
 	}
 	os.Remove(fn2)
 	defer f1.Close()
 
 	fm, err := ioutil.TempFile("", "sortchunk")
 	if err != nil {
-		return "", err
+		errors <- err
+		return
+
 	}
 	defer fm.Close()
 	err = doMerge(fm, f1, f2)
-	return fm.Name(), err
+	if err != nil {
+		errors <- err
+		return
+	}
+	done.Lock()
+	atomic.AddInt32(inFlight, -1)
+	files <- fm.Name()
+	done.Unlock()
 }
