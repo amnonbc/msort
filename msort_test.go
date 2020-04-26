@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -214,14 +215,13 @@ func (r *randReader) Read(buf []byte) (int, error) {
 	if int(*r) == 0 {
 		return 0, io.EOF
 	}
-	w := &bytes.Buffer{}
-	for len(buf)-w.Len() > 20 && int(*r) > 0 {
-		fmt.Fprintln(w, rand.Int31())
+	buf = buf[:0]
+	for cap(buf)-len(buf) > 20 && int(*r) > 0 {
+		buf = strconv.AppendInt(buf, int64(rand.Int31()), 10)
+		buf = append(buf, '\n')
 		*r--
 	}
-
-	copy(buf, w.Bytes())
-	return w.Len(), nil
+	return len(buf), nil
 }
 
 func Test_sortFileMassive(t *testing.T) {
