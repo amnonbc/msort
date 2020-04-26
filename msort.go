@@ -66,7 +66,8 @@ func (a *aStream) Next() bool {
 		return false
 	}
 	x := 0
-	x, a.err = strconv.Atoi(a.r.Text())
+	buf := a.r.Bytes()
+	x, a.err = strconv.Atoi(string(buf))
 	a.top = int32(x)
 	return true
 }
