@@ -312,7 +312,7 @@ func Test_intWriter_Write(t *testing.T) {
 	f := &bytes.Buffer{}
 	w := newIntWriter(f, 2)
 	w.writeInt32(1)
-	w.Flush()
+	w.flush()
 	assert.Equal(t, encode(1), f.Bytes())
 }
 
@@ -322,7 +322,7 @@ func Test_intWriter_Write3(t *testing.T) {
 	w.writeInt32(1)
 	w.writeInt32(2)
 	w.writeInt32(3)
-	w.Flush()
+	w.flush()
 	assert.Equal(t, encode(1, 2, 3), f.Bytes())
 }
 

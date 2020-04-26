@@ -283,7 +283,7 @@ func newIntWriter(f io.Writer, maxLen int) *intWriter {
 	}
 }
 
-func (w *intWriter) Flush() error {
+func (w *intWriter) flush() error {
 	if w.err != nil {
 		return w.err
 	}
@@ -292,12 +292,15 @@ func (w *intWriter) Flush() error {
 	return w.err
 }
 
+// writeInt32 writes an number into an intWriter.
+// The intWriter stores any errors encoutered internally, and these should be checked
+// when intWriter.flush is called.
 func (w *intWriter) writeInt32(x int32) {
 	if w.err != nil {
 		return
 	}
 	if len(w.buf) >= w.maxLen {
-		w.Flush()
+		w.flush()
 	}
 	w.buf = append(w.buf, x)
 }
@@ -334,7 +337,7 @@ func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
 		return b.err
 	}
 
-	return w.Flush()
+	return w.flush()
 }
 
 // merge merges fn1 and fn2, and writes the merged output into a new temporary file.
