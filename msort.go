@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -17,17 +18,19 @@ import (
 )
 
 type sorter struct {
-	fileChan chan string
-	errors   chan error
-	done     sync.Mutex
-	inFlight int32
+	fileChan     chan string
+	errors       chan error
+	activeWorker chan bool
+	done         sync.Mutex
+	inFlight     int32
 }
 
 func newSorter() *sorter {
 	return &sorter{
-		fileChan: make(chan string, 1000),
-		errors:   make(chan error),
-		inFlight: 1,
+		fileChan:     make(chan string, 1000),
+		errors:       make(chan error),
+		activeWorker: make(chan bool, runtime.NumCPU()),
+		inFlight:     1,
 	}
 }
 
@@ -193,6 +196,11 @@ func readBInts(f io.Reader, a []int32) (int, error) {
 // leafsort reads numbers from r, breaks them into sorted chunks of length chunkSz and writes each chunk to a file.
 // It returns a slice of the names of chunkfiles.
 func (s *sorter) leafSort(r io.Reader, chunkSz int) {
+	s.activeWorker <- true
+	defer func() {
+		_ = <-s.activeWorker
+	}()
+
 	buf := make([]int32, chunkSz)
 	a := newAStream(r)
 
@@ -354,6 +362,12 @@ func doMerge(writer io.Writer, r1 io.Reader, r2 io.Reader) error {
 // merge merges fn1 and fn2, and writes the merged output into a new temporary file.
 // It writes the name of the newly created temporary file to filesChan
 func (s *sorter) merge(fn1 string, fn2 string) {
+	// limit number of workers to NumCPU()
+	s.activeWorker <- true
+	defer func() {
+		_ = <-s.activeWorker
+	}()
+
 	f1, err := os.Open(fn1)
 	if err != nil {
 		s.errors <- err
