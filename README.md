@@ -41,9 +41,9 @@ sys	0m2.845s
 ```
 generating 10000000 random numbers
 running largesort
-real	0m6.548s
-user	0m5.716s
-sys	0m1.191s
+real	0m4.840s
+user	0m4.469s
+sys	0m0.675s
 ```
 
 ## TODO

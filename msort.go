@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -225,6 +226,7 @@ func leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, i
 }
 
 func binToAscii(in string, out string) error {
+	buf := make([]byte, 0, 64*1024)
 	h, err := os.Open(in)
 	if err != nil {
 		return err
@@ -236,11 +238,19 @@ func binToAscii(in string, out string) error {
 		return err
 	}
 	defer o.Close()
-	ob := bufio.NewWriter(o)
 	for a.Next() {
-		writeInt(ob, int(a.top))
+		if cap(buf)-len(buf) < 20 {
+			_, err = o.Write(buf)
+			if err != nil {
+				return err
+			}
+			buf = buf[:0]
+		}
+		buf = strconv.AppendInt(buf, int64(a.top), 10)
+		buf = append(buf, '\n')
 	}
-	return ob.Flush()
+	_, err = o.Write(buf)
+	return err
 }
 
 // SortFile sorts numbers from r, saving the output to outFileName.
