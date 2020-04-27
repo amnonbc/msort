@@ -351,3 +351,27 @@ func Test_readBIntsEof(t *testing.T) {
 	assert.Equal(t, 0, got)
 
 }
+
+type randIReader int
+
+func (r *randIReader) Read(buf []byte) (int, error) {
+	buf = buf[:0]
+	n := int32(0)
+	for cap(buf)-len(buf) > 4 {
+		buf = append(buf, encode(n)...)
+		n++
+	}
+	return len(buf), nil
+}
+func Benchmark_iStream_Next(b *testing.B) {
+	r := randIReader(0)
+	i := newIStream(&r)
+	for n := 0; n < b.N; n++ {
+		ok := i.Next()
+
+		if !ok {
+			b.Fatal(n, "failed", i)
+		}
+	}
+
+}

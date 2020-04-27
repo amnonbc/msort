@@ -127,9 +127,9 @@ func (a *iStream) Next() bool {
 		}
 		a.last = n
 		a.next = 0
-	}
-	if a.err != nil || a.eof {
-		return false
+		if a.err != nil || a.eof {
+			return false
+		}
 	}
 	a.top = a.buf[a.next]
 	a.next++
