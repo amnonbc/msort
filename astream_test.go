@@ -64,3 +64,29 @@ func Test_astream_ReadNumsErrorBadFile(t *testing.T) {
 	_, err := a.readNums(nums)
 	assert.Error(t, err)
 }
+
+func Test_atoi(t *testing.T) {
+	tests := []struct {
+		arg     string
+		want    int32
+		wantErr bool
+	}{
+		{"0", 0, false},
+		{"123", 123, false},
+		{"-123", -123, false},
+		{"not_a_number", 0, true},
+		{"9999999999999999999999", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.arg, func(t *testing.T) {
+			got, err := atoi([]byte(tt.arg))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("atoi() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("atoi() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

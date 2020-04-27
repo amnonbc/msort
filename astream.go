@@ -4,8 +4,10 @@ package msort
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 )
 
 type aStream struct {
@@ -35,18 +37,21 @@ func atoi(s []byte) (int32, error) {
 		}
 	}
 
-	n := int32(0)
+	n := 0
 	for _, ch := range s {
 		ch -= '0'
 		if ch > 9 {
 			return 0, fmt.Errorf("bad int %q", s0)
 		}
-		n = n*10 + int32(ch)
+		n = n*10 + int(ch)
+		if n > math.MaxInt32 {
+			return 0, errors.New("Number overflow")
+		}
 	}
 	if s0[0] == '-' {
 		n = -n
 	}
-	return n, nil
+	return int32(n), nil
 }
 
 func (a *aStream) Next() bool {
