@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -224,11 +225,26 @@ func (r *randReader) Read(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
+func checkSorted(t *testing.T, fileName string) {
+	f, err := os.Open(fileName)
+	require.NoError(t, err)
+	defer f.Close()
+	a := newAStream(f)
+	a.Next()
+	prev := a.top
+	for a.Next() {
+		assert.True(t, prev <= a.top)
+		prev = a.top
+	}
+}
+
+// This tests sorts a 1000000 element file
 func Test_sortFileMassive(t *testing.T) {
 	r := randReader(1000000)
 	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
 	defer os.Remove(outFile)
 	err := SortFile(outFile, &r, 10000)
+	checkSorted(t, outFile)
 	assert.NoError(t, err)
 }
 
@@ -363,6 +379,7 @@ func (r *randIReader) Read(buf []byte) (int, error) {
 	}
 	return len(buf), nil
 }
+
 func Benchmark_iStream_Next(b *testing.B) {
 	r := randIReader(0)
 	i := newIStream(&r)

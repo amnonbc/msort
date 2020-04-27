@@ -21,8 +21,9 @@ type sorter struct {
 	fileChan     chan string
 	errors       chan error
 	activeWorker chan bool
-	done         sync.Mutex
-	inFlight     int32
+
+	done     sync.Mutex
+	inFlight int32
 }
 
 func newSorter() *sorter {
@@ -136,10 +137,12 @@ func (a *iStream) Next() bool {
 	return true
 }
 
-func (a *aStream) readNums(nums []int32) (int, error) {
+// readNums reads at most len(nums) numbers from ascii stream a into array. It returns the number of numbers
+// read.
+func (a *aStream) readNums(array []int32) (int, error) {
 	n := 0
-	for n < len(nums) && a.Next() {
-		nums[n] = a.top
+	for n < len(array) && a.Next() {
+		array[n] = a.top
 		n++
 	}
 	return n, a.err
@@ -164,12 +167,12 @@ func writeBIntsToFile(a []int32) (string, error) {
 
 // WriteBInts writes a slice of numbers to f.
 func writeBInts(f io.Writer, a []int32) error {
-	// Use unsafe cast to avoid unnecessary copy of data
+	// Use unsafe cast to avoid unnecessary copy of data.
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
 	header.Len *= bytesPerNumber
 	header.Cap *= bytesPerNumber
 
-	// Convert slice header to an []byte
+	// Convert slice header to an []byte.
 	data := *(*[]byte)(unsafe.Pointer(&header))
 
 	_, err := f.Write(data)
@@ -193,16 +196,17 @@ func readBInts(f io.Reader, a []int32) (int, error) {
 	return n / bytesPerNumber, err
 }
 
-func binToAscii(in string, out string) error {
+// binToAscii reads binary encodes numbers from file inFile and writes them as text to outFile.
+func binToAscii(inFile string, outFile string) error {
 	const writeBufferSize = 64 * 1024
 	buf := make([]byte, 0, writeBufferSize)
-	h, err := os.Open(in)
+	h, err := os.Open(inFile)
 	if err != nil {
 		return err
 	}
 	defer h.Close()
 	a := newIStream(h)
-	o, err := os.Create(out)
+	o, err := os.Create(outFile)
 	if err != nil {
 		return err
 	}
@@ -223,6 +227,7 @@ func binToAscii(in string, out string) error {
 	return err
 }
 
+// intWriter is a helper structure for writing binary numbers to a file.
 type intWriter struct {
 	f      io.Writer
 	maxLen int
