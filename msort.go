@@ -28,7 +28,7 @@ type sorter struct {
 
 func newSorter() *sorter {
 	return &sorter{
-		fileChan:     make(chan string, 1000),
+		fileChan:     make(chan string, 20),
 		errors:       make(chan error),
 		activeWorker: make(chan bool, runtime.NumCPU()),
 		inFlight:     1,
