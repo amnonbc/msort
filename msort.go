@@ -1,20 +1,14 @@
 package msort
 
 import (
-	"bufio"
-	"encoding/binary"
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
-	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 type sorter struct {
@@ -33,167 +27,6 @@ func newSorter() *sorter {
 		activeWorker: make(chan bool, runtime.NumCPU()),
 		inFlight:     1,
 	}
-}
-
-type aStream struct {
-	top int32
-	r   *bufio.Scanner
-	eof bool
-	err error
-}
-
-const bytesPerNumber = 4
-
-type iStream struct {
-	top  int32
-	buf  []int32
-	next int
-	last int
-	r    io.Reader
-	eof  bool
-	err  error
-}
-
-func newIStream(r io.Reader) iStream {
-	return iStream{
-		r:   r,
-		buf: make([]int32, 16*1024),
-	}
-}
-
-var tmpDir = os.TempDir()
-
-func newAStream(r io.Reader) aStream {
-	i := aStream{r: bufio.NewScanner(r)}
-	i.r.Split(bufio.ScanWords)
-	return i
-}
-
-func (a *aStream) ok() bool {
-	return a.err == nil && a.eof == false
-}
-
-// copy of stdlib strconv.Atoi, hacked to accept []byte input, avoiding allocation.
-func atoi(s []byte) (int32, error) {
-	s0 := s
-	if s[0] == '-' || s[0] == '+' {
-		s = s[1:]
-		if len(s) < 1 {
-			return 0, fmt.Errorf("bad int %q", s0)
-		}
-	}
-
-	n := int32(0)
-	for _, ch := range s {
-		ch -= '0'
-		if ch > 9 {
-			return 0, fmt.Errorf("bad int %q", s0)
-		}
-		n = n*10 + int32(ch)
-	}
-	if s0[0] == '-' {
-		n = -n
-	}
-	return n, nil
-}
-
-func (a *aStream) Next() bool {
-	if a.err != nil {
-		return false
-	}
-	a.eof = !a.r.Scan()
-	a.err = a.r.Err()
-	if a.eof || a.err != nil {
-		return false
-	}
-	buf := a.r.Bytes()
-	a.top, a.err = atoi(buf)
-	return true
-}
-
-func (a *iStream) ok() bool {
-	return a.err == nil && a.eof == false
-}
-
-func (a *iStream) Next() bool {
-	if a.err != nil {
-		return false
-	}
-	if a.next >= a.last {
-		n, err := readBInts(a.r, a.buf)
-		if err == io.EOF {
-			a.eof = true
-		} else {
-			a.err = err
-		}
-		a.last = n
-		a.next = 0
-		if a.err != nil || a.eof {
-			return false
-		}
-	}
-	a.top = a.buf[a.next]
-	a.next++
-	return true
-}
-
-// readNums reads at most len(nums) numbers from ascii stream a into array. It returns the number of numbers
-// read.
-func (a *aStream) readNums(array []int32) (int, error) {
-	n := 0
-	for n < len(array) && a.Next() {
-		array[n] = a.top
-		n++
-	}
-	return n, a.err
-}
-
-func writeBInt(h io.Writer, x int32) {
-	buf := make([]byte, bytesPerNumber)
-	binary.LittleEndian.PutUint32(buf, uint32(x))
-	h.Write(buf)
-}
-
-// writeBIntsToFile writes a slice of numbers into a new temprary file, returning the name of the temporary file
-func writeBIntsToFile(a []int32) (string, error) {
-	f, err := ioutil.TempFile("", "sortchunk")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	err = writeBInts(f, a)
-	return f.Name(), err
-}
-
-// WriteBInts writes a slice of numbers to f.
-func writeBInts(f io.Writer, a []int32) error {
-	// Use unsafe cast to avoid unnecessary copy of data.
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
-	header.Len *= bytesPerNumber
-	header.Cap *= bytesPerNumber
-
-	// Convert slice header to an []byte.
-	data := *(*[]byte)(unsafe.Pointer(&header))
-
-	_, err := f.Write(data)
-	return err
-}
-
-func readBInts(f io.Reader, a []int32) (int, error) {
-
-	// Get the slice header
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&a))
-	header.Len *= bytesPerNumber
-	header.Cap *= bytesPerNumber
-
-	// Convert slice header to an []byte
-	data := *(*[]byte)(unsafe.Pointer(&header))
-
-	n, err := f.Read(data)
-	if n%bytesPerNumber != 0 {
-		err = errors.New("truncated input")
-	}
-	return n / bytesPerNumber, err
 }
 
 // binToAscii reads binary encodes numbers from file inFile and writes them as text to outFile.
