@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strconv"
 	"unsafe"
 )
 
@@ -106,4 +107,77 @@ func readBInts(f io.Reader, a []int32) (int, error) {
 		err = errors.New("truncated input")
 	}
 	return n / bytesPerNumber, err
+}
+
+// intWriter is a helper structure for writing binary numbers to a file.
+type intWriter struct {
+	f      io.Writer
+	maxLen int
+	buf    []int32
+	err    error
+}
+
+func newIntWriter(f io.Writer, maxLen int) *intWriter {
+	return &intWriter{
+		f:      f,
+		maxLen: maxLen,
+		buf:    make([]int32, 0, maxLen),
+	}
+}
+
+func (w *intWriter) flush() error {
+	if w.err != nil {
+		return w.err
+	}
+	w.err = writeBInts(w.f, w.buf)
+	w.buf = w.buf[0:0]
+	return w.err
+}
+
+// writeInt32 writes an number into an intWriter.
+// The intWriter stores any errors encoutered internally, and these should be checked
+// when intWriter.flush is called.
+func (w *intWriter) writeInt32(x int32) {
+	if w.err != nil {
+		return
+	}
+	if len(w.buf) >= w.maxLen {
+		w.flush()
+	}
+	w.buf = append(w.buf, x)
+}
+
+// binToAscii reads binary encodes numbers from file inFile and writes them as text to outFile.
+func binToAscii(inFile string, outFile string) error {
+	h, err := os.Open(inFile)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	a := newIStream(h)
+	o, err := os.Create(outFile)
+	if err != nil {
+		return err
+	}
+	defer o.Close()
+	return doBinToAscii(o, a)
+}
+
+func doBinToAscii(w io.Writer, a iStream) error {
+	const writeBufferSize = 64 * 1024
+	buf := make([]byte, 0, writeBufferSize)
+	for a.Next() {
+		// buffer nearly full, lets flush buf.
+		if cap(buf)-len(buf) < 20 {
+			_, err := w.Write(buf)
+			if err != nil {
+				return err
+			}
+			buf = buf[:0]
+		}
+		buf = strconv.AppendInt(buf, int64(a.top), 10)
+		buf = append(buf, '\n')
+	}
+	_, err := w.Write(buf)
+	return err
 }
