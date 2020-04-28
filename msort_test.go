@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -110,7 +111,7 @@ func Test_leafSort(t *testing.T) {
 
 	chunk = <-s.fileChan
 	checkContent(t, encode(7, 9, 99), chunk)
-	assert.Zero(t, s.inFlight)
+	assert.Zero(t, atomic.LoadInt32(&s.inFlight))
 }
 
 func Test_leafSort0(t *testing.T) {
@@ -127,7 +128,7 @@ func Test_leafSort0(t *testing.T) {
 
 	chunk = <-s.fileChan
 	checkContent(t, encode(2), chunk)
-	assert.Zero(t, s.inFlight)
+	assert.Zero(t, atomic.LoadInt32(&s.inFlight))
 }
 
 func Test_leafSortError(t *testing.T) {
