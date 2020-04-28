@@ -37,13 +37,13 @@ func atoi(s []byte) (int32, error) {
 		}
 	}
 
-	n := 0
+	n := int64(0)
 	for _, ch := range s {
 		ch -= '0'
 		if ch > 9 {
 			return 0, fmt.Errorf("bad int %q", s0)
 		}
-		n = n*10 + int(ch)
+		n = n*10 + int64(ch)
 		if n > math.MaxInt32 {
 			return 0, errors.New("Number overflow")
 		}
