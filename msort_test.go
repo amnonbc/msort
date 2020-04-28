@@ -96,11 +96,13 @@ func checkContent(t *testing.T, expected interface{}, fn string) {
 //leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int32)
 func Test_leafSort(t *testing.T) {
 	var err error
-	tmpDir, err = ioutil.TempDir(".", "tempdir")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
 	input := "10 8 6 4 2 0 1 3 7 9 99"
 	s := newSorter()
+	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
+	assert.NoError(t, err)
+	defer os.RemoveAll(s.tmpDir)
+
 	go s.leafSort(strings.NewReader(input), 4)
 
 	chunk := <-s.fileChan
@@ -116,11 +118,12 @@ func Test_leafSort(t *testing.T) {
 
 func Test_leafSort0(t *testing.T) {
 	var err error
-	tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
 	input := "10 8 6 4 2"
 	s := newSorter()
+	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
+	assert.NoError(t, err)
+	defer os.RemoveAll(s.tmpDir)
+
 	go s.leafSort(strings.NewReader(input), 4)
 
 	chunk := <-s.fileChan
@@ -133,11 +136,12 @@ func Test_leafSort0(t *testing.T) {
 
 func Test_leafSortError(t *testing.T) {
 	var err error
-	tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
 	input := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
 	s := newSorter()
+	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
+	assert.NoError(t, err)
+	defer os.RemoveAll(s.tmpDir)
+
 	go s.leafSort(strings.NewReader(input), 4)
 	err = <-s.errors
 	assert.Error(t, err)
@@ -216,15 +220,16 @@ func Test_sortFile(t *testing.T) {
 }
 
 func Test_sortFileMalformedInput(t *testing.T) {
-	fn, err := ioutil.TempFile("", "softtest")
-	defer os.Remove(fn.Name())
-	err = SortFile(fn.Name(), strings.NewReader("not_a_number"), 4)
+	err := SortFile(os.DevNull, strings.NewReader("not_a_number"), 4)
 	assert.Error(t, err)
 }
 
 func Test_sortFileReadError(t *testing.T) {
-	fn, err := ioutil.TempFile("", "softtest")
-	defer os.Remove(fn.Name())
-	err = SortFile(fn.Name(), errorReader(0), 4)
+	err := SortFile(os.DevNull, errorReader(0), 4)
+	assert.Error(t, err)
+}
+
+func Test_sortFileCantWriteOutput(t *testing.T) {
+	err := SortFile("/unwritabled/file", errorReader(0), 4)
 	assert.Error(t, err)
 }

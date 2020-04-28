@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strconv"
@@ -14,8 +13,6 @@ import (
 )
 
 const bytesPerNumber = 4
-
-var tmpDir = os.TempDir()
 
 // helper struct for reading a file of binary 4 byte little endian integers.
 type iStream struct {
@@ -65,17 +62,6 @@ func writeBInt(h io.Writer, x int32) {
 	buf := make([]byte, bytesPerNumber)
 	binary.LittleEndian.PutUint32(buf, uint32(x))
 	h.Write(buf)
-}
-
-// writeBIntsToFile writes a slice of numbers into a new temprary file, returning the name of the temporary file
-func writeBIntsToFile(a []int32) (string, error) {
-	f, err := ioutil.TempFile("", "sortchunk")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	err = writeBInts(f, a)
-	return f.Name(), err
 }
 
 // WriteBInts writes a slice of numbers to f.

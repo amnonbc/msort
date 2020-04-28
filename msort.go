@@ -17,6 +17,8 @@ type sorter struct {
 
 	done     sync.Mutex
 	inFlight int32
+
+	tmpDir string
 }
 
 func newSorter() *sorter {
@@ -25,6 +27,7 @@ func newSorter() *sorter {
 		errors:       make(chan error),
 		activeWorker: make(chan bool, runtime.NumCPU()),
 		inFlight:     1,
+		tmpDir:       os.TempDir(),
 	}
 }
 
@@ -84,12 +87,19 @@ func (s *sorter) leafSort(r io.Reader, chunkSz int) {
 		sort.Slice(buf, func(i, j int) bool {
 			return buf[i] < buf[j]
 		})
-		fn, err := writeBIntsToFile(buf)
+		f, err := ioutil.TempFile(s.tmpDir, "sortchunk")
 		if err != nil {
 			s.errors <- err
 			return
 		}
-		s.fileChan <- fn
+
+		err = writeBInts(f, buf)
+		f.Close()
+		if err != nil {
+			s.errors <- err
+			return
+		}
+		s.fileChan <- f.Name()
 	}
 	s.done.Lock()
 	atomic.AddInt32(&s.inFlight, -1)
@@ -122,7 +132,7 @@ func (s *sorter) merge(fn1 string, fn2 string) {
 	os.Remove(fn2)
 	defer f1.Close()
 
-	fm, err := ioutil.TempFile("", "sortchunk")
+	fm, err := ioutil.TempFile(s.tmpDir, "sortchunk")
 	if err != nil {
 		s.errors <- err
 		return
