@@ -111,6 +111,18 @@ func Benchmark_iStream_Next(b *testing.B) {
 	}
 }
 
+func Test_intWriter(t *testing.T) {
+	w := new(bytes.Buffer)
+	i := newIntWriter(w, 2)
+	i.writeInt32(1)
+	i.writeInt32(2)
+	i.writeInt32(3)
+	assert.Equal(t, encode(1, 2), w.Bytes())
+	i.writeInt32(4)
+	i.flush()
+	assert.Equal(t, encode(1, 2, 3, 4), w.Bytes())
+}
+
 func Test_doBinToAscii(t *testing.T) {
 	w := new(bytes.Buffer)
 	in := bytes.NewReader([]byte{1, 0, 0, 0, 2, 0, 0, 0})

@@ -2,9 +2,9 @@ package msort
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -80,6 +80,7 @@ func Test_doMergeTruncatedInput(t *testing.T) {
 }
 
 func checkContent(t *testing.T, expected interface{}, fn string) {
+	assert.NoError(t, isSorted(fn))
 	contents, err := ioutil.ReadFile(fn)
 	assert.NoError(t, err)
 	switch expected.(type) {
@@ -171,17 +172,21 @@ func (r *randReader) Read(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-func checkSorted(t *testing.T, fileName string) {
+func isSorted(fileName string) error {
 	f, err := os.Open(fileName)
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	a := newAStream(f)
 	a.Next()
 	prev := a.top
 	for a.Next() {
-		assert.True(t, prev <= a.top)
-		prev = a.top
+		if prev > a.top {
+			return errors.New("Unsorted")
+		}
 	}
+	return nil
 }
 
 // This tests sorts a 1000000 element file
@@ -190,7 +195,7 @@ func Test_sortFileMassive(t *testing.T) {
 	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
 	defer os.Remove(outFile)
 	err := SortFile(outFile, &r, 10000)
-	checkSorted(t, outFile)
+	assert.NoError(t, isSorted(outFile))
 	assert.NoError(t, err)
 }
 
