@@ -94,7 +94,11 @@ func (s *sorter) leafSort(r io.Reader, chunkSz int) {
 		}
 
 		err = writeBInts(f, buf)
-		f.Close()
+		if err != nil {
+			s.errors <- err
+			return
+		}
+		err = f.Close()
 		if err != nil {
 			s.errors <- err
 			return
@@ -137,8 +141,13 @@ func (s *sorter) merge(fn1 string, fn2 string) {
 		s.errors <- err
 		return
 	}
-	defer fm.Close()
 	err = doMerge(fm, f1, f2)
+	if err != nil {
+		fm.Close()
+		s.errors <- err
+		return
+	}
+	err = fm.Close()
 	if err != nil {
 		s.errors <- err
 		return
