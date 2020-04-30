@@ -204,6 +204,13 @@ func Test_sortFileMassive(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// This tests sorts a 1000000 element file but throws away the result, for profiling.
+func Test_sortFileProfile(t *testing.T) {
+	r := randReader(1000000)
+	err := SortFile(ioutil.Discard, &r, 10000)
+	assert.NoError(t, err)
+}
+
 func Test_sortFile(t *testing.T) {
 	tests := []struct {
 		name  string
