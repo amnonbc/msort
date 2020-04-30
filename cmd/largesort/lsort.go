@@ -28,7 +28,13 @@ func main() {
 		log.Fatal(err)
 	}
 	defer in.Close()
-	err = msort.SortFile(outFile, in, *chunkSz)
+	out, err := os.Create(outFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer in.Close()
+
+	err = msort.SortFile(out, in, *chunkSz)
 	if err != nil {
 		log.Fatal(err)
 	}

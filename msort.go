@@ -150,7 +150,7 @@ func (s *sorter) merge(fn1 string, fn2 string) {
 }
 
 // SortFile sorts numbers from r, saving the output to outFileName.
-func SortFile(outFileName string, r io.Reader, chunkSz int) error {
+func SortFile(w io.Writer, r io.Reader, chunkSz int) error {
 	left, right := "", ""
 	s := newSorter()
 	go s.leafSort(r, chunkSz)
@@ -177,5 +177,5 @@ func SortFile(outFileName string, r io.Reader, chunkSz int) error {
 		go s.merge(left, right)
 	}
 	defer os.Remove(left)
-	return binToAscii(left, outFileName)
+	return binToAscii(left, w)
 }

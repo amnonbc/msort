@@ -83,6 +83,10 @@ func checkContent(t *testing.T, expected interface{}, fn string) {
 	assert.NoError(t, isSorted(fn))
 	contents, err := ioutil.ReadFile(fn)
 	assert.NoError(t, err)
+	checkBytes(t, expected, contents)
+}
+
+func checkBytes(t *testing.T, expected interface{}, contents []byte) {
 	switch expected.(type) {
 	case string:
 		actual := strings.ReplaceAll(string(contents), "\n", " ")
@@ -150,11 +154,10 @@ func Test_leafSortError(t *testing.T) {
 
 func Test_sortFilezz(t *testing.T) {
 	s := "10 8 6 4 2 0 1 3 5 7 9"
-	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
-	defer os.Remove(outFile)
-	err := SortFile(outFile, strings.NewReader(s), 4)
+	out := new(bytes.Buffer)
+	err := SortFile(out, strings.NewReader(s), 4)
 	assert.NoError(t, err)
-	checkContent(t, "0 1 2 3 4 5 6 7 8 9 10", outFile)
+	checkBytes(t, "0 1 2 3 4 5 6 7 8 9 10", out.Bytes())
 }
 
 type randReader int
@@ -194,7 +197,9 @@ func Test_sortFileMassive(t *testing.T) {
 	r := randReader(1000000)
 	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
 	defer os.Remove(outFile)
-	err := SortFile(outFile, &r, 10000)
+	out, err := os.Create(outFile)
+	assert.NoError(t, err)
+	err = SortFile(out, &r, 10000)
 	assert.NoError(t, isSorted(outFile))
 	assert.NoError(t, err)
 }
@@ -213,28 +218,26 @@ func Test_sortFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
-			os.Remove(outFile)
+			out := new(bytes.Buffer)
 
-			err := SortFile(outFile, strings.NewReader(tt.input), 4)
+			err := SortFile(out, strings.NewReader(tt.input), 4)
 			assert.NoError(t, err)
-			checkContent(t, tt.want, outFile)
-			os.Remove(outFile)
+			checkBytes(t, tt.want, out.Bytes())
 		})
 	}
 }
 
 func Test_sortFileMalformedInput(t *testing.T) {
-	err := SortFile(os.DevNull, strings.NewReader("not_a_number"), 4)
+	err := SortFile(ioutil.Discard, strings.NewReader("not_a_number"), 4)
 	assert.Error(t, err)
 }
 
 func Test_sortFileReadError(t *testing.T) {
-	err := SortFile(os.DevNull, errorReader(0), 4)
+	err := SortFile(ioutil.Discard, errorReader(0), 4)
 	assert.Error(t, err)
 }
 
 func Test_sortFileCantWriteOutput(t *testing.T) {
-	err := SortFile("/unwritabled/file", errorReader(0), 4)
+	err := SortFile(errorWriter(0), errorReader(0), 4)
 	assert.Error(t, err)
 }

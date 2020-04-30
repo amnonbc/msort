@@ -134,19 +134,14 @@ func (w *intWriter) writeInt32(x int32) {
 }
 
 // binToAscii reads binary encodes numbers from file inFile and writes them as text to outFile.
-func binToAscii(inFile string, outFile string) error {
+func binToAscii(inFile string, w io.Writer) error {
 	h, err := os.Open(inFile)
 	if err != nil {
 		return err
 	}
 	defer h.Close()
 	a := newIStream(h)
-	o, err := os.Create(outFile)
-	if err != nil {
-		return err
-	}
-	defer o.Close()
-	return doBinToAscii(o, a)
+	return doBinToAscii(w, a)
 }
 
 func doBinToAscii(w io.Writer, a iStream) error {
