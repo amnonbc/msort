@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 func encode(val ...int32) []byte {
@@ -192,22 +191,34 @@ func isSorted(fileName string) error {
 	return nil
 }
 
+type inOrderCheckerWriter struct {
+	t    *testing.T
+	last int
+}
+
+// Write consumes buf, parsing newline separated positive numbers, and raises an error if the numbers are
+// not sorted.
+func (w inOrderCheckerWriter) Write(buf []byte) (int, error) {
+	cur := 0
+	for _, b := range buf {
+		if '0' <= b && b <= '9' {
+			cur = 10*cur + int(b-'0')
+			continue
+		}
+		if w.last > cur {
+			w.t.Error(w.last, ">", cur)
+		}
+		w.last = cur
+		cur = 0
+	}
+	return len(buf), nil
+}
+
 // This tests sorts a 1000000 element file
 func Test_sortFileMassive(t *testing.T) {
 	r := randReader(1000000)
-	outFile := fmt.Sprintf("outfile%d.txt", time.Now().Nanosecond())
-	defer os.Remove(outFile)
-	out, err := os.Create(outFile)
-	assert.NoError(t, err)
-	err = SortFile(out, &r, 10000)
-	assert.NoError(t, isSorted(outFile))
-	assert.NoError(t, err)
-}
-
-// This tests sorts a 1000000 element file but throws away the result, for profiling.
-func Test_sortFileProfile(t *testing.T) {
-	r := randReader(1000000)
-	err := SortFile(ioutil.Discard, &r, 10000)
+	w := inOrderCheckerWriter{t: t}
+	err := SortFile(w, &r, 10000)
 	assert.NoError(t, err)
 }
 
@@ -223,10 +234,11 @@ func Test_sortFile(t *testing.T) {
 		{"long sorted", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"},
 		{"long jumpbles", "11 7 16 1 2 3 4 5 6 8 9 10 12 13 14 15  17", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"},
 	}
+	out := new(bytes.Buffer)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out := new(bytes.Buffer)
-
+			out.Reset()
 			err := SortFile(out, strings.NewReader(tt.input), 4)
 			assert.NoError(t, err)
 			checkBytes(t, tt.want, out.Bytes())
