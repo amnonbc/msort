@@ -140,13 +140,13 @@ func binToAscii(inFile string, w io.Writer) error {
 		return err
 	}
 	defer h.Close()
-	a := newIStream(h)
-	return doBinToAscii(w, a)
+	return doBinToAscii(w, h)
 }
 
-func doBinToAscii(w io.Writer, a iStream) error {
+func doBinToAscii(w io.Writer, r io.Reader) error {
 	const writeBufferSize = 64 * 1024
 	buf := make([]byte, 0, writeBufferSize)
+	a := newIStream(r)
 	for a.Next() {
 		// buffer nearly full, lets flush buf.
 		if cap(buf)-len(buf) < 20 {

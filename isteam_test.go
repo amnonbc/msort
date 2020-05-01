@@ -126,7 +126,7 @@ func Test_intWriter(t *testing.T) {
 func Test_doBinToAscii(t *testing.T) {
 	w := new(bytes.Buffer)
 	in := bytes.NewReader([]byte{1, 0, 0, 0, 2, 0, 0, 0})
-	err := doBinToAscii(w, newIStream(in))
+	err := doBinToAscii(w, in)
 	assert.NoError(t, err)
 	assert.Equal(t, "1\n2\n", w.String())
 }
