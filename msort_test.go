@@ -198,7 +198,7 @@ type inOrderCheckerWriter struct {
 
 // Write consumes buf, parsing newline separated positive numbers, and raises an error if the numbers are
 // not sorted.
-func (w inOrderCheckerWriter) Write(buf []byte) (int, error) {
+func (w *inOrderCheckerWriter) Write(buf []byte) (int, error) {
 	cur := 0
 	for _, b := range buf {
 		if '0' <= b && b <= '9' {
@@ -217,7 +217,7 @@ func (w inOrderCheckerWriter) Write(buf []byte) (int, error) {
 // This tests sorts a 1000000 element file
 func Test_sortFileMassive(t *testing.T) {
 	r := randReader(1000000)
-	w := inOrderCheckerWriter{t: t}
+	w := &inOrderCheckerWriter{t: t}
 	err := SortFile(w, &r, 10000)
 	assert.NoError(t, err)
 }
