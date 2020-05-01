@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -78,23 +79,12 @@ func Test_doMergeTruncatedInput(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func checkContent(t *testing.T, expected interface{}, fn string) {
+func checkContent(t *testing.T, expected []byte, fn string) {
 	assert.NoError(t, isSorted(fn))
 	contents, err := ioutil.ReadFile(fn)
 	assert.NoError(t, err)
-	checkBytes(t, expected, contents)
-}
+	assert.Equal(t, expected, contents)
 
-func checkBytes(t *testing.T, expected interface{}, contents []byte) {
-	switch expected.(type) {
-	case string:
-		actual := strings.ReplaceAll(string(contents), "\n", " ")
-		actual = strings.TrimSpace(actual)
-
-		assert.Equal(t, expected, actual)
-	case []byte:
-		assert.Equal(t, expected, contents)
-	}
 }
 
 //leafSort(r io.Reader, chunkSz int, chunks chan string, errors chan error, inFlight *int32)
@@ -156,7 +146,7 @@ func Test_sortFilezz(t *testing.T) {
 	out := new(bytes.Buffer)
 	err := SortFile(out, strings.NewReader(s), 4)
 	assert.NoError(t, err)
-	checkBytes(t, "0 1 2 3 4 5 6 7 8 9 10", out.Bytes())
+	assert.Equal(t, sortString(s), strings.TrimSpace(out.String()))
 }
 
 type randReader int
@@ -192,8 +182,9 @@ func isSorted(fileName string) error {
 }
 
 type inOrderCheckerWriter struct {
-	t    *testing.T
-	last int
+	t     *testing.T
+	last  int
+	count int
 }
 
 // Write consumes buf, parsing newline separated positive numbers, and raises an error if the numbers are
@@ -209,6 +200,7 @@ func (w *inOrderCheckerWriter) Write(buf []byte) (int, error) {
 			w.t.Error(w.last, ">", cur)
 		}
 		w.last = cur
+		w.count++
 		cur = 0
 	}
 	return len(buf), nil
@@ -216,23 +208,37 @@ func (w *inOrderCheckerWriter) Write(buf []byte) (int, error) {
 
 // This tests sorts a 1000000 element file
 func Test_sortFileMassive(t *testing.T) {
-	r := randReader(1000000)
+	const N = 1000000
+	r := randReader(N)
 	w := &inOrderCheckerWriter{t: t}
 	err := SortFile(w, &r, 10000)
 	assert.NoError(t, err)
+	assert.Equal(t, N, w.count)
+}
+
+func sortString(in string) string {
+	atoi := func(s string) int {
+		i, _ := strconv.Atoi(s)
+		return i
+	}
+
+	items := strings.Split(in, " ")
+	sort.Slice(items, func(i, j int) bool {
+		return atoi(items[i]) < atoi(items[j])
+	})
+	return strings.Join(items, "\n")
 }
 
 func Test_sortFile(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  string
 	}{
-		{"empty", "", ""},
-		{"one", "1", "1"},
-		{"sorted", "1 2 3", "1 2 3"},
-		{"long sorted", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"},
-		{"long jumpbles", "11 7 16 1 2 3 4 5 6 8 9 10 12 13 14 15  17", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"},
+		{"empty", ""},
+		{"one", "1"},
+		{"sorted", "1 2 3"},
+		{"long sorted", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"},
+		{"long jumpbles", "11 7 16 1 2 3 4 5 6 8 9 10 12 13 14 15 17"},
 	}
 	out := new(bytes.Buffer)
 
@@ -241,7 +247,8 @@ func Test_sortFile(t *testing.T) {
 			out.Reset()
 			err := SortFile(out, strings.NewReader(tt.input), 4)
 			assert.NoError(t, err)
-			checkBytes(t, tt.want, out.Bytes())
+			want := sortString(tt.input)
+			assert.Equal(t, want, strings.TrimSpace(out.String()))
 		})
 	}
 }
