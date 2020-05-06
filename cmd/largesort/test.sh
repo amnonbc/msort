@@ -6,7 +6,7 @@ test -d testdata || mkdir testdata
 go build .
 
 echo running largesort
-time ./largesort testdata/input.txt testdata/output.txt
+time ./largesort -verbose testdata/input.txt testdata/output.txt
 
 cd testdata
 

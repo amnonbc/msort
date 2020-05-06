@@ -6,6 +6,7 @@ import (
 	"github.com/amnonbc/msort"
 	"log"
 	"os"
+	"runtime"
 )
 
 func Usage() {
@@ -16,6 +17,7 @@ func Usage() {
 func main() {
 	flag.Usage = Usage
 	chunkSz := flag.Int("chunkSz", 1000000, "how many numbers to hold in memory simultaneously")
+	verbose := flag.Bool("verbose", false, "print runtime metrics")
 	flag.Parse()
 	inFile := flag.Arg(0)
 	outFile := flag.Arg(1)
@@ -38,4 +40,27 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *verbose {
+		logFileStats(inFile)
+		logMemStats()
+		log.Println(runtime.NumCPU(), "cores")
+	}
+
+}
+
+const M = 1024 * 1024
+
+func logFileStats(fn string) {
+	st, err := os.Stat(fn)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println("data read:", st.Size()/M, "Mb")
+}
+
+func logMemStats() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Println("Total memory allocated:", m.TotalAlloc/M, "Mb")
 }
