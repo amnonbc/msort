@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"runtime/trace"
 )
 
 func Usage() {
@@ -18,12 +19,26 @@ func main() {
 	flag.Usage = Usage
 	chunkSz := flag.Int("chunkSz", 1000000, "how many numbers to hold in memory simultaneously")
 	verbose := flag.Bool("verbose", false, "print runtime metrics")
+	doTrace := flag.Bool("trace", false, "print runtime metrics")
 	flag.Parse()
 	inFile := flag.Arg(0)
 	outFile := flag.Arg(1)
 	if inFile == "" || outFile == "" {
 		Usage()
 		return
+	}
+	if *doTrace {
+		f, err := os.Create("trace.out")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		log.Println("tracing to trace.out")
+		err = trace.Start(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer trace.Stop()
 	}
 	in, err := os.Open(inFile)
 	if err != nil {
