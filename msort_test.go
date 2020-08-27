@@ -93,9 +93,7 @@ func Test_leafSort(t *testing.T) {
 	assert.NoError(t, err)
 	input := "10 8 6 4 2 0 1 3 7 9 99"
 	s := newSorter()
-	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(s.tmpDir)
+	s.tmpDir = t.TempDir()
 
 	go s.leafSort(strings.NewReader(input), 4)
 
@@ -111,12 +109,9 @@ func Test_leafSort(t *testing.T) {
 }
 
 func Test_leafSort0(t *testing.T) {
-	var err error
 	input := "10 8 6 4 2"
 	s := newSorter()
-	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(s.tmpDir)
+	s.tmpDir = t.TempDir()
 
 	go s.leafSort(strings.NewReader(input), 4)
 
@@ -132,9 +127,7 @@ func Test_leafSortError(t *testing.T) {
 	var err error
 	input := "10 8 6 4 2 0 1 3 5 7 9  not_a_number"
 	s := newSorter()
-	s.tmpDir, err = ioutil.TempDir(".", "tempdir")
-	assert.NoError(t, err)
-	defer os.RemoveAll(s.tmpDir)
+	s.tmpDir = t.TempDir()
 
 	go s.leafSort(strings.NewReader(input), 4)
 	err = <-s.errors
